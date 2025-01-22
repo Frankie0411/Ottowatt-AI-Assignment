@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ottowatt AI Assignment</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>PDF Analysis System</h1>
+        
+        <div class="upload-section">
+            <input type="text" id="apiKey" class="api-key-input" placeholder="Enter your OpenAI API key">
+            <button onclick="useTestKey()" class="button">Use Test Key</button>
+            <button onclick="setApiKey()" class="button">Set API Key</button>
+            <input type="file" id="pdfFile" class="file-input" accept=".pdf">
+            <button onclick="uploadFile()" class="button" id="uploadButton">Upload PDF</button>
+            <p id="uploadStatus" style="display: none;"></p>
+        </div>
+        
+        <div class="results-section" id="resultsSection" style="display: none;">
+            <button onclick="toggleFullText()" class="button">Show/Hide Full Text</button>
+            <textarea id="fullText" class="text-area" style="display: none;" readonly></textarea>
+            
+            <div class="question-section">
+                <input type="text" id="question" class="api-key-input" placeholder="Ask a question about the document">
+                <button onclick="askQuestion()" class="button" id="askButton">Ask Question</button>
+            </div>
+            
+            <div class="answer-section" id="answerSection" style="display: none;">
+                <h3>Answer:</h3>
+                <p id="answer"></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let isProcessing = false;
+        let isApiKeySet = false;
+
+        async function useTestKey() {
+            try {
+                const response = await fetch('/set-api-key', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ keyType: 'test' })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showStatus('Test API key set successfully');
+                    isApiKeySet = true;
+                    document.getElementById('apiKey').value = 'Test Key Active';
+                    document.getElementById('apiKey').disabled = true;
+                } else {
+                    showStatus(data.error || 'Error setting test API key', true);
+                }
+            } catch (error) {
+                showStatus('An error occurred while setting the test API key', true);
+                console.error('Error:', error);
+            }
+        }
+
+        async function setApiKey() {
+            const apiKey = document.getElementById('apiKey').value;
+            
+            if (!apiKey) {
+                showStatus('Please enter an API key', true);
+                return;
+            }
+
+            try {
+                const response = await fetch('/set-api-key', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        keyType: 'custom',
+                        apiKey: apiKey
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showStatus('API key set successfully');
+                    isApiKeySet = true;
+                    document.getElementById('apiKey').disabled = true;
+                } else {
+                    showStatus(data.error || 'Error setting API key', true);
+                }
+            } catch (error) {
+                showStatus('An error occurred while setting the API key', true);
+                console.error('Error:', error);
+            }
+        }
+
+        function toggleFullText() {
+            const fullText = document.getElementById('fullText');
+            fullText.style.display = fullText.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function showStatus(message, isError = false) {
+            const status = document.getElementById('uploadStatus');
+            status.textContent = message;
+            status.style.display = 'block';
+            status.className = isError ? 'error' : 'success';
+        }
+
+        function disableInterface(disable) {
+            document.getElementById('uploadButton').disabled = disable;
+            document.getElementById('askButton').disabled = disable;
+            isProcessing = disable;
+        }
+
+        async function uploadFile() {
+            if (isProcessing || !isApiKeySet) {
+                showStatus('Please set an API key first', true);
+                return;
+            }
+            
+            const fileInput = document.getElementById('pdfFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                showStatus('Please select a file', true);
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            disableInterface(true);
+            showStatus('Processing PDF...');
+            
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('fullText').value = data.full_text;
+                    document.getElementById('resultsSection').style.display = 'block';
+                    showStatus('File processed successfully');
+                } else {
+                    showStatus(data.error || 'Error processing file', true);
+                }
+            } catch (error) {
+                showStatus('An error occurred while processing the file', true);
+                console.error('Error:', error);
+            } finally {
+                disableInterface(false);
+            }
+        }
+
+        async function askQuestion() {
+            if (isProcessing || !isApiKeySet) {
+                showStatus('Please set an API key first', true);
+                return;
+            }
+            
+            const question = document.getElementById('question').value;
+            
+            if (!question) {
+                showStatus('Please enter a question', true);
+                return;
+            }
+            
+            disableInterface(true);
+            showStatus('Processing question...');
+            
+            try {
+                const response = await fetch('/query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ question: question })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('answer').textContent = data.answer;
+                    document.getElementById('answerSection').style.display = 'block';
+                    showStatus('Question answered successfully');
+                } else {
+                    showStatus(data.error || 'Error processing question', true);
+                }
+            } catch (error) {
+                showStatus('An error occurred while processing the question', true);
+                console.error('Error:', error);
+            } finally {
+                disableInterface(false);
+            }
+        }
+
+        // Handle Enter key in question input
+        document.getElementById('question').addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                askQuestion();
+            }
+        });
+    </script>
+</body>
+</html>
